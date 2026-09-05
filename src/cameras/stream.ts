@@ -20,8 +20,10 @@ export function nextIndex(i: number, n: number, step = 1): number {
   return (((i + step) % n) + n) % n;
 }
 
-export function shownCameras(all: string[], layout: Layout): string[] {
-  if (layout === "Single") return all.slice(0, 1);
-  if (layout === "Side by side") return all.slice(0, 2);
-  return all;
+/** The camera ids on screen for a layout, starting at `index`. Never repeats a camera. */
+export function shownCameras(all: string[], layout: Layout, index = 0): string[] {
+  if (all.length === 0) return [];
+  const i = nextIndex(index, all.length, 0);
+  if (layout === "Side by side" && all.length > 1) return [all[i]!, all[nextIndex(i, all.length)]!];
+  return [all[i]!];
 }

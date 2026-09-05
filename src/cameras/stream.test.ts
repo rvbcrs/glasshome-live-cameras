@@ -28,17 +28,22 @@ describe("nextIndex", () => {
     expect(nextIndex(2, 3)).toBe(0);
     expect(nextIndex(0, 3, -1)).toBe(2);
     expect(nextIndex(5, 0)).toBe(0);
+    expect(nextIndex(7, 3, 0)).toBe(1);
   });
 });
 
 describe("shownCameras", () => {
   const all = ["camera.a", "camera.b", "camera.c"];
-  test("single shows the first, pair the first two, rotate all", () => {
+  test("single and rotate show one camera, pair shows two", () => {
     expect(shownCameras(all, "Single")).toEqual(["camera.a"]);
+    expect(shownCameras(all, "Rotate all", 2)).toEqual(["camera.c"]);
     expect(shownCameras(all, "Side by side")).toEqual(["camera.a", "camera.b"]);
-    expect(shownCameras(all, "Rotate all")).toEqual(all);
   });
-  test("pair with one camera shows one pane", () => {
+  test("pair wraps around from the index", () => {
+    expect(shownCameras(all, "Side by side", 2)).toEqual(["camera.c", "camera.a"]);
+  });
+  test("pair with one camera shows one pane, and nothing shows nothing", () => {
     expect(shownCameras(["camera.a"], "Side by side")).toEqual(["camera.a"]);
+    expect(shownCameras([], "Side by side")).toEqual([]);
   });
 });

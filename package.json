@@ -10,7 +10,7 @@
     "@glasshome/widget-sdk": "^1.14.3",
     "@iconify-icon/solid": "^3.0.3",
     "@types/bun": "latest",
-    "playwright": "^1.62.1",
+    "playwright": "1.62.1",
     "solid-js": "^1.9.11",
     "typescript": "^5.0.0",
     "vite": "^7.3.1",

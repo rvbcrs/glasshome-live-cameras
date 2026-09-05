@@ -1,0 +1,133 @@
+{
+  "name": "Cameras",
+  "description": "Your Home Assistant cameras live on the dashboard: one camera, two side by side, or all of them in turn with a crossfade. Plays WebRTC where the camera offers it, HLS otherwise, and falls back to MJPEG and stills, so every camera shows something. Tap for the next camera, hold for a large view. Streams stop when the tile is off screen. English, Dutch, German and French.",
+  "icon": "mdi:cctv",
+  "minSize": {
+    "w": 1,
+    "h": 1
+  },
+  "maxSize": {
+    "w": 6,
+    "h": 4
+  },
+  "defaultSize": {
+    "w": 3,
+    "h": 2
+  },
+  "sdkVersion": "^1.14.1",
+  "configVersion": 1,
+  "version": "0.1.0",
+  "capabilities": [
+    {
+      "domain": "camera",
+      "access": "read"
+    }
+  ],
+  "schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "title": {
+        "title": "Title",
+        "description": "Optional display name override",
+        "type": "string"
+      },
+      "cameras": {
+        "default": [],
+        "domain": "camera",
+        "title": "Cameras",
+        "description": "The order here is the order on the tile.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "layout": {
+        "default": "Single",
+        "title": "Layout",
+        "description": "One camera, the first two side by side, or all of them in turn.",
+        "type": "string",
+        "enum": [
+          "Single",
+          "Side by side",
+          "Rotate all"
+        ]
+      },
+      "interval": {
+        "default": 10,
+        "title": "Seconds per camera",
+        "description": "How long each camera stays when rotating.",
+        "type": "number",
+        "minimum": 3,
+        "maximum": 120
+      },
+      "showName": {
+        "default": true,
+        "title": "Show name",
+        "description": "Camera name over the picture.",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "cameras",
+      "layout",
+      "interval",
+      "showName"
+    ],
+    "additionalProperties": false
+  },
+  "defaultConfig": {
+    "cameras": [],
+    "layout": "Single",
+    "interval": 10,
+    "showName": true
+  },
+  "examples": [
+    {
+      "label": "Single",
+      "size": {
+        "w": 3,
+        "h": 2
+      },
+      "config": {
+        "cameras": [
+          "camera.front_door_camera"
+        ],
+        "layout": "Single",
+        "interval": 10,
+        "showName": true
+      }
+    },
+    {
+      "label": "Side by side",
+      "size": {
+        "w": 4,
+        "h": 2
+      },
+      "config": {
+        "cameras": [
+          "camera.front_door_camera",
+          "camera.front_door_camera"
+        ],
+        "layout": "Side by side",
+        "interval": 10,
+        "showName": true
+      }
+    },
+    {
+      "label": "Compact",
+      "size": {
+        "w": 1,
+        "h": 1
+      },
+      "config": {
+        "cameras": [
+          "camera.front_door_camera"
+        ],
+        "layout": "Single",
+        "interval": 10,
+        "showName": false
+      }
+    }
+  ]
+}
