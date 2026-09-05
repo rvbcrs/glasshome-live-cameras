@@ -11,30 +11,43 @@ import {
 import { Icon } from "@iconify-icon/solid";
 import Hls from "hls.js/light";
 import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
-import { mjpegPath, type Route, routesFor } from "./stream";
+import { type Fit, fitClass, mjpegPath, type Route, routesFor } from "./stream";
 
 /** A rung that shows no frame within this window is skipped. */
 const FIRST_FRAME_MS = 8000;
 const SNAPSHOT_MS = 10_000;
+/** A video that stops advancing for this long is reconnected. */
+const STALL_MS = 12_000;
+/** Pause before reconnecting a stream that was playing and then failed. */
+const RECONNECT_MS = 3000;
+/** A camera that fell all the way to the placeholder is retried at this pace. */
+const RETRY_MS = 60_000;
 
 type Stop = () => void;
 type Signals = { onFrame: () => void; onFail: () => void };
 
 export interface PlayerProps {
   entityId: string;
+  muted?: boolean;
+  fit?: Fit;
   /** First frame of whichever route won (placeholder counts). */
   onReady?: () => void;
   /** The route now on screen. */
   onRoute?: (route: Route) => void;
+  /** A new frame arrived on an image route (MJPEG or snapshot). */
+  onFrame?: (at: number) => void;
 }
 
 /**
  * Fills its parent with the camera. Walks the playback ladder from `routesFor`
- * and drops one rung on every failure, ending in a still placeholder.
+ * and drops one rung on every failure before the first frame, ending in a
+ * still placeholder. A stream that played and then died is reconnected from
+ * the top of the ladder instead, and a placeholder is retried once a minute.
  */
 export function Player(props: PlayerProps) {
   const entity = useEntity(() => props.entityId);
   const [rung, setRung] = createSignal(0);
+  const [attempt, setAttempt] = createSignal(0);
   const [route, setRoute] = createSignal<Route>("placeholder");
   let video!: HTMLVideoElement;
   let img!: HTMLImageElement;
@@ -48,6 +61,9 @@ export function Player(props: PlayerProps) {
   };
 
   createEffect(on(() => props.entityId, () => setRung(0), { defer: true }));
+  createEffect(() => {
+    video.muted = props.muted ?? true;
+  });
 
   // A boolean memo: the entity view is replaced on every HA update and must
   // not restart the stream each time.
@@ -56,6 +72,7 @@ export function Player(props: PlayerProps) {
   createEffect(() => {
     const id = props.entityId;
     const r = rung();
+    attempt();
     if (!loaded()) return;
     // Attributes rotate (tokens, pictures); only the ladder shape may restart a stream.
     const routes = untrack(ladder);
@@ -64,34 +81,47 @@ export function Player(props: PlayerProps) {
     // Callbacks run untracked: the parent reads its own signals in them, and
     // those must not become dependencies of this effect.
     untrack(() => props.onRoute?.(current));
-    if (current === "placeholder") {
-      untrack(() => props.onReady?.());
-      return;
-    }
 
     let alive = true;
     let stop: Stop | undefined;
+    let hadFrame = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (fn: () => void, ms: number) => timers.push(setTimeout(fn, ms));
+    onCleanup(() => {
+      alive = false;
+      for (const t of timers) clearTimeout(t);
+      stop?.();
+    });
+
+    if (current === "placeholder") {
+      untrack(() => props.onReady?.());
+      if (routes.length > 1) later(() => setRung(0), RETRY_MS);
+      return;
+    }
+
     const fail = () => {
       if (!alive) return;
       alive = false;
-      clearTimeout(timer);
+      for (const t of timers) clearTimeout(t);
       stop?.();
-      setRung((n) => n + 1);
+      // Died mid-stream: come back from the top after a breather. Never showed
+      // a frame: this route is not for this camera, try the next one.
+      if (hadFrame) timers.push(setTimeout(() => (r === 0 ? setAttempt((n) => n + 1) : setRung(0)), RECONNECT_MS));
+      else setRung((n) => n + 1);
     };
-    const timer = setTimeout(fail, FIRST_FRAME_MS);
+    later(() => !hadFrame && fail(), FIRST_FRAME_MS);
     const signals: Signals = {
       onFrame: () => {
         if (!alive) return;
-        clearTimeout(timer);
-        props.onReady?.();
+        const first = !hadFrame;
+        hadFrame = true;
+        untrack(() => {
+          if (first) props.onReady?.();
+          if (current === "mjpeg" || current === "snapshot") props.onFrame?.(Date.now());
+        });
       },
       onFail: fail,
     };
-    onCleanup(() => {
-      alive = false;
-      clearTimeout(timer);
-      stop?.();
-    });
 
     // The entity view is a store proxy: a tracked read here would restart the
     // stream on every attribute update, so the token and picture are read untracked.
@@ -105,18 +135,33 @@ export function Player(props: PlayerProps) {
         : current === "hls"
           ? startHls(id, video, signals)
           : current === "mjpeg"
-            ? Promise.resolve(startMjpeg(id, token, img, signals))
+            ? startMjpeg(id, token, img, signals)
             : Promise.resolve(startSnapshot(picture, img, signals));
     start.then((s) => (alive ? (stop = s) : s()), fail);
+
+    // Watchdog for video routes: a frozen picture is worse than a reconnect.
+    if (current === "webrtc" || current === "hls") {
+      let lastTime = -1;
+      let lastProgress = Date.now();
+      const tick = setInterval(() => {
+        if (!alive) return clearInterval(tick);
+        if (video.currentTime !== lastTime) {
+          lastTime = video.currentTime;
+          lastProgress = Date.now();
+        } else if (hadFrame && Date.now() - lastProgress > STALL_MS) fail();
+      }, 2000);
+      onCleanup(() => clearInterval(tick));
+    }
   });
 
   const usesVideo = () => route() === "webrtc" || route() === "hls";
   const usesImg = () => route() === "mjpeg" || route() === "snapshot";
+  const fit = () => fitClass(props.fit);
 
   return (
     <div class="relative h-full w-full overflow-hidden bg-black">
-      <video ref={video} class="absolute inset-0 h-full w-full object-cover" classList={{ hidden: !usesVideo() }} autoplay muted playsinline />
-      <img ref={img} class="absolute inset-0 h-full w-full object-cover" classList={{ hidden: !usesImg() }} alt="" draggable={false} />
+      <video ref={video} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesVideo() }} autoplay playsinline />
+      <img ref={img} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesImg() }} alt="" draggable={false} />
       <div
         class="absolute inset-0 flex items-center justify-center text-white/40"
         classList={{ hidden: route() !== "placeholder" }}
@@ -191,11 +236,13 @@ async function startHls(id: string, video: HTMLVideoElement, s: Signals): Promis
   const url = data.stream.url;
   if (!url) throw new Error("no HLS url");
   video.addEventListener("loadeddata", s.onFrame, { once: true });
+  video.addEventListener("error", s.onFail, { once: true });
 
   if (video.canPlayType("application/vnd.apple.mpegurl")) {
     video.src = url;
     void video.play().catch(() => {});
     return () => {
+      video.removeEventListener("error", s.onFail);
       video.removeAttribute("src");
       video.load();
     };
@@ -213,17 +260,85 @@ async function startHls(id: string, video: HTMLVideoElement, s: Signals): Promis
   hls.on(Hls.Events.MANIFEST_PARSED, () => void video.play().catch(() => {}));
   hls.loadSource(url);
   hls.attachMedia(video);
-  return () => hls.destroy();
+  return () => {
+    video.removeEventListener("error", s.onFail);
+    hls.destroy();
+  };
 }
 
-function startMjpeg(id: string, token: string | undefined, img: HTMLImageElement, s: Signals): Stop {
-  img.onload = s.onFrame;
-  img.onerror = s.onFail;
-  img.src = hassMediaUrl(mjpegPath(id, token)) ?? "";
+const SOI = [0xff, 0xd8, 0xff];
+const EOI = [0xff, 0xd9];
+
+function indexOf(buf: Uint8Array, pat: number[], from = 0): number {
+  outer: for (let i = from; i <= buf.length - pat.length; i++) {
+    for (let k = 0; k < pat.length; k++) if (buf[i + k] !== pat[k]) continue outer;
+    return i;
+  }
+  return -1;
+}
+
+/**
+ * MJPEG through fetch, not `<img src>`: the browser only shows a multipart
+ * part once the boundary of the next part arrives, and HA sends a new part
+ * only when the picture changes, so a still camera would sit on a black tile.
+ * Every complete JPEG is shown the moment its end marker is in.
+ */
+async function startMjpeg(id: string, token: string | undefined, img: HTMLImageElement, s: Signals): Promise<Stop> {
+  const url = hassMediaUrl(mjpegPath(id, token));
+  if (!url) throw new Error("no MJPEG url");
+  const ctrl = new AbortController();
+  const res = await fetch(url, { credentials: "include", signal: ctrl.signal });
+  if (!res.ok || !res.body) throw new Error(`MJPEG ${res.status}`);
+  const reader = res.body.getReader();
+  const urls: string[] = [];
+  const show = (jpeg: Uint8Array) => {
+    const u = URL.createObjectURL(new Blob([jpeg as BlobPart], { type: "image/jpeg" }));
+    urls.push(u);
+    img.onload = () => {
+      // Everything older than what is on screen can go.
+      while (urls.length > 1 && urls[0] !== u) URL.revokeObjectURL(urls.shift()!);
+      s.onFrame();
+    };
+    img.src = u;
+  };
+
+  void (async () => {
+    let buf = new Uint8Array(0);
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const next = new Uint8Array(buf.length + value.length);
+        next.set(buf);
+        next.set(value, buf.length);
+        buf = next;
+        for (;;) {
+          const start = indexOf(buf, SOI);
+          if (start < 0) {
+            buf = buf.subarray(Math.max(0, buf.length - 2));
+            break;
+          }
+          const end = indexOf(buf, EOI, start + 3);
+          if (end < 0) {
+            buf = buf.subarray(start);
+            break;
+          }
+          show(buf.slice(start, end + 2));
+          buf = buf.subarray(end + 2);
+        }
+      }
+      if (!ctrl.signal.aborted) s.onFail();
+    } catch {
+      if (!ctrl.signal.aborted) s.onFail();
+    }
+  })();
+
   return () => {
+    ctrl.abort();
+    void reader.cancel().catch(() => {});
     img.onload = null;
-    img.onerror = null;
     img.removeAttribute("src");
+    for (const u of urls) URL.revokeObjectURL(u);
   };
 }
 

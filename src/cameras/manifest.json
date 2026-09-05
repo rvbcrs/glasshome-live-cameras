@@ -1,6 +1,6 @@
 {
   "name": "Cameras",
-  "description": "Your Home Assistant cameras live on the dashboard: one camera, two side by side, or all of them in turn with a crossfade. Plays WebRTC where the camera offers it, HLS otherwise, and falls back to MJPEG and stills, so every camera shows something. Tap for the next camera, hold for a large view. Streams stop when the tile is off screen. English, Dutch, German and French.",
+  "description": "Your Home Assistant cameras live on the dashboard: one camera, two side by side, four in a grid, or all of them in turn with a crossfade. Jumps to the camera whose motion or doorbell sensor fires and holds it there. Plays WebRTC where the camera offers it, HLS otherwise, and falls back to MJPEG and stills, so every camera shows something; frozen streams reconnect on their own. Tap for the next camera, hold for a large view with sound. Streams stop when the tile is off screen. English, Dutch, German and French.",
   "icon": "mdi:cctv",
   "minSize": {
     "w": 1,
@@ -15,11 +15,19 @@
     "h": 2
   },
   "sdkVersion": "^1.14.1",
-  "configVersion": 1,
+  "configVersion": 2,
   "version": "0.1.0",
   "capabilities": [
     {
       "domain": "camera",
+      "access": "read"
+    },
+    {
+      "domain": "binary_sensor",
+      "access": "read"
+    },
+    {
+      "domain": "event",
       "access": "read"
     }
   ],
@@ -45,11 +53,12 @@
       "layout": {
         "default": "Single",
         "title": "Layout",
-        "description": "One camera, the first two side by side, or all of them in turn.",
+        "description": "One camera, two side by side, four in a grid, or all of them in turn.",
         "type": "string",
         "enum": [
           "Single",
           "Side by side",
+          "Grid 2x2",
           "Rotate all"
         ]
       },
@@ -60,6 +69,32 @@
         "type": "number",
         "minimum": 3,
         "maximum": 120
+      },
+      "fit": {
+        "default": "Fill",
+        "title": "Picture",
+        "description": "Fill the tile and crop, or fit the whole picture with bars.",
+        "type": "string",
+        "enum": [
+          "Fill",
+          "Fit",
+          "Fill top",
+          "Fill bottom"
+        ]
+      },
+      "motion": {
+        "default": true,
+        "title": "Jump on motion",
+        "description": "Show the camera whose motion or doorbell sensor fires. Sensors are found on the camera's own device.",
+        "type": "boolean"
+      },
+      "hold": {
+        "default": 30,
+        "title": "Seconds to hold",
+        "description": "How long a camera stays after motion, a doorbell or a tap.",
+        "type": "number",
+        "minimum": 5,
+        "maximum": 300
       },
       "showName": {
         "default": true,
@@ -72,6 +107,9 @@
       "cameras",
       "layout",
       "interval",
+      "fit",
+      "motion",
+      "hold",
       "showName"
     ],
     "additionalProperties": false
@@ -80,6 +118,9 @@
     "cameras": [],
     "layout": "Single",
     "interval": 10,
+    "fit": "Fill",
+    "motion": true,
+    "hold": 30,
     "showName": true
   },
   "examples": [
@@ -90,11 +131,14 @@
         "h": 2
       },
       "config": {
+        "interval": 10,
+        "fit": "Fill",
+        "motion": true,
+        "hold": 30,
         "cameras": [
           "camera.front_door_camera"
         ],
         "layout": "Single",
-        "interval": 10,
         "showName": true
       }
     },
@@ -105,12 +149,36 @@
         "h": 2
       },
       "config": {
+        "interval": 10,
+        "fit": "Fill",
+        "motion": true,
+        "hold": 30,
         "cameras": [
           "camera.front_door_camera",
           "camera.front_door_camera"
         ],
         "layout": "Side by side",
+        "showName": true
+      }
+    },
+    {
+      "label": "Grid",
+      "size": {
+        "w": 4,
+        "h": 3
+      },
+      "config": {
         "interval": 10,
+        "fit": "Fill",
+        "motion": true,
+        "hold": 30,
+        "cameras": [
+          "camera.front_door_camera",
+          "camera.front_door_camera",
+          "camera.front_door_camera",
+          "camera.front_door_camera"
+        ],
+        "layout": "Grid 2x2",
         "showName": true
       }
     },
@@ -121,11 +189,14 @@
         "h": 1
       },
       "config": {
+        "interval": 10,
+        "fit": "Fill",
+        "motion": true,
+        "hold": 30,
         "cameras": [
           "camera.front_door_camera"
         ],
         "layout": "Single",
-        "interval": 10,
         "showName": false
       }
     }
