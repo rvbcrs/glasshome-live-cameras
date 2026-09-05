@@ -1,0 +1,38 @@
+{
+  "name": "glasshome-cameras",
+  "version": "0.1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rvbcrs/glasshome-cameras.git"
+  },
+  "devDependencies": {
+    "@glasshome/widget-cli": "^0.13.3",
+    "@glasshome/widget-sdk": "^1.14.3",
+    "@iconify-icon/solid": "^3.0.3",
+    "@types/bun": "latest",
+    "playwright": "^1.62.1",
+    "solid-js": "^1.9.11",
+    "typescript": "^5.0.0",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.11",
+    "@glasshome/widget-sdk": "^1.14.3"
+  },
+  "description": "Live camera widget for GlassHome",
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "widget": "glasshome-widget"
+  },
+  "type": "module",
+  "dependencies": {
+    "hls.js": "^1.7.2"
+  }
+}
