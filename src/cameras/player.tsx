@@ -10,7 +10,7 @@ import {
 } from "@glasshome/widget-sdk";
 import { Icon } from "@iconify-icon/solid";
 import Hls from "hls.js/light";
-import { createEffect, createSignal, on, onCleanup, untrack } from "solid-js";
+import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
 import { mjpegPath, type Route, routesFor } from "./stream";
 
 /** A rung that shows no frame within this window is skipped. */
@@ -49,18 +49,23 @@ export function Player(props: PlayerProps) {
 
   createEffect(on(() => props.entityId, () => setRung(0), { defer: true }));
 
+  // A boolean memo: the entity view is replaced on every HA update and must
+  // not restart the stream each time.
+  const loaded = createMemo(() => entity() !== undefined);
+
   createEffect(() => {
     const id = props.entityId;
-    const loaded = entity() !== undefined;
     const r = rung();
-    if (!loaded) return;
+    if (!loaded()) return;
     // Attributes rotate (tokens, pictures); only the ladder shape may restart a stream.
     const routes = untrack(ladder);
     const current = routes[Math.min(r, routes.length - 1)]!;
     setRoute(current);
-    props.onRoute?.(current);
+    // Callbacks run untracked: the parent reads its own signals in them, and
+    // those must not become dependencies of this effect.
+    untrack(() => props.onRoute?.(current));
     if (current === "placeholder") {
-      props.onReady?.();
+      untrack(() => props.onReady?.());
       return;
     }
 
@@ -88,15 +93,20 @@ export function Player(props: PlayerProps) {
       stop?.();
     });
 
-    const e = untrack(entity)!;
+    // The entity view is a store proxy: a tracked read here would restart the
+    // stream on every attribute update, so the token and picture are read untracked.
+    const { token, picture } = untrack(() => {
+      const e = entity()!;
+      return { token: getEntityAttribute<string>(e, "access_token"), picture: getEntityAttribute<string>(e, "entity_picture") };
+    });
     const start =
       current === "webrtc"
         ? startWebrtc(id, video, signals)
         : current === "hls"
           ? startHls(id, video, signals)
           : current === "mjpeg"
-            ? Promise.resolve(startMjpeg(id, getEntityAttribute<string>(e, "access_token"), img, signals))
-            : Promise.resolve(startSnapshot(getEntityAttribute<string>(e, "entity_picture"), img, signals));
+            ? Promise.resolve(startMjpeg(id, token, img, signals))
+            : Promise.resolve(startSnapshot(picture, img, signals));
     start.then((s) => (alive ? (stop = s) : s()), fail);
   });
 

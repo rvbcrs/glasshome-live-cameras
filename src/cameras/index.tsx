@@ -60,7 +60,7 @@ const FADE_MS = 300;
 
 function CamerasWidget(props: { config: Config }) {
   const ctx = useWidgetContext();
-  const { setShowDialog, openDialog, dialogProps } = useWidgetDialog();
+  const { showDialog, setShowDialog, openDialog, dialogProps } = useWidgetDialog();
 
   const cameras = () => props.config.cameras ?? [];
   const layout = (): Layout => props.config.layout ?? "Single";
@@ -126,9 +126,10 @@ function CamerasWidget(props: { config: Config }) {
           setShowDialog(false);
         }}
         controlsContent={
-          <Show when={cameras().length > 0}>
+          <Show when={showDialog() && cameras().length > 0}>
             <div class="flex flex-col gap-3">
               <div class="relative w-full overflow-hidden rounded-xl bg-black" style={{ "aspect-ratio": "16 / 9" }}>
+                {/* Only while open: controlsContent is built eagerly, and a hidden player would still stream. */}
                 <Stack entityId={cameras()[nextIndex(index(), cameras().length, 0)]!} showName large />
               </div>
               <Show when={cameras().length > 1}>
@@ -186,8 +187,7 @@ function Stack(props: StackProps) {
 
   const settle = (slot: Slot) => {
     slot.setReady(true);
-    const timer = setTimeout(() => setSlots((s) => s.filter((x) => x.key >= slot.key)), FADE_MS);
-    onCleanup(() => clearTimeout(timer));
+    setTimeout(() => setSlots((s) => s.filter((x) => x.key >= slot.key)), FADE_MS);
   };
 
   const top = () => slots().at(-1);
