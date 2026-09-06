@@ -49,6 +49,9 @@ export function Player(props: PlayerProps) {
   const [rung, setRung] = createSignal(0);
   const [attempt, setAttempt] = createSignal(0);
   const [route, setRoute] = createSignal<Route>("placeholder");
+  // The picture elements stay hidden until a frame really landed, so a failed
+  // load never shows the browser's broken-image icon.
+  const [frameOk, setFrameOk] = createSignal(false);
   let video!: HTMLVideoElement;
   let img!: HTMLImageElement;
 
@@ -78,6 +81,7 @@ export function Player(props: PlayerProps) {
     const routes = untrack(ladder);
     const current = routes[Math.min(r, routes.length - 1)]!;
     setRoute(current);
+    setFrameOk(false);
     // Callbacks run untracked: the parent reads its own signals in them, and
     // those must not become dependencies of this effect.
     untrack(() => props.onRoute?.(current));
@@ -115,6 +119,7 @@ export function Player(props: PlayerProps) {
         if (!alive) return;
         const first = !hadFrame;
         hadFrame = true;
+        setFrameOk(true);
         untrack(() => {
           if (first) props.onReady?.();
           if (current === "mjpeg" || current === "snapshot") props.onFrame?.(Date.now());
@@ -160,8 +165,8 @@ export function Player(props: PlayerProps) {
 
   return (
     <div class="relative h-full w-full overflow-hidden bg-black">
-      <video ref={video} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesVideo() }} autoplay playsinline />
-      <img ref={img} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesImg() }} alt="" draggable={false} />
+      <video ref={video} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesVideo() || !frameOk() }} autoplay playsinline />
+      <img ref={img} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesImg() || !frameOk() }} alt="" draggable={false} />
       <div
         class="absolute inset-0 flex items-center justify-center text-white/40"
         classList={{ hidden: route() !== "placeholder" }}
@@ -348,17 +353,24 @@ function startSnapshot(picture: string | undefined, img: HTMLImageElement, s: Si
     s.onFail();
     return () => {};
   }
+  // Each still is fetched off screen first; the visible element only ever
+  // swaps to a picture that decoded, so a refresh never flashes or breaks.
+  let alive = true;
   const load = () => {
-    img.src = `${base}${base.includes("?") ? "&" : "?"}_ts=${Date.now()}`;
+    const probe = new Image();
+    probe.onload = () => {
+      if (!alive) return;
+      img.src = probe.src;
+      s.onFrame();
+    };
+    probe.onerror = () => alive && s.onFail();
+    probe.src = `${base}${base.includes("?") ? "&" : "?"}_ts=${Date.now()}`;
   };
-  img.onload = s.onFrame;
-  img.onerror = s.onFail;
   load();
   const timer = setInterval(load, SNAPSHOT_MS);
   return () => {
+    alive = false;
     clearInterval(timer);
-    img.onload = null;
-    img.onerror = null;
     img.removeAttribute("src");
   };
 }
