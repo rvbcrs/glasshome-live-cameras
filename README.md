@@ -1,11 +1,11 @@
-# Cameras widget for GlassHome
+# Live Cameras widget for GlassHome
 
 Your Home Assistant cameras live on the dashboard. One camera, two side by
 side, four in a grid, or every configured camera in turn with a crossfade.
 
-![Single, 3x2](preview/cameras-single-dark.png)
+![Single, 3x2](preview/live-cameras-single-dark.png)
 
-![Grid, 4x3](preview/cameras-grid-dark.png)
+![Grid, 4x3](preview/live-cameras-grid-dark.png)
 
 ## What it does
 

@@ -1,5 +1,5 @@
 {
-  "name": "glasshome-cameras",
+  "name": "glasshome-live-cameras",
   "version": "0.1.0",
   "repository": {
     "type": "git",
@@ -20,7 +20,7 @@
     "solid-js": "^1.9.11",
     "@glasshome/widget-sdk": "^1.14.3"
   },
-  "description": "Live camera widget for GlassHome",
+  "description": "Live Cameras widget for GlassHome",
   "files": [
     "dist"
   ],

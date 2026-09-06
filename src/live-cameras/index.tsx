@@ -368,7 +368,7 @@ const DEMO_CFG = { interval: 10, fit: "Fill", motion: true, hold: 30 } as const;
 
 export default defineWidget<Config>({
   manifest: {
-    name: "Cameras",
+    name: "Live Cameras",
     description:
       "Your Home Assistant cameras live on the dashboard: one camera, two side by side, four in a grid, or all of them in turn with a crossfade. Jumps to the camera whose motion or doorbell sensor fires and holds it there. Plays WebRTC where the camera offers it, HLS otherwise, and falls back to MJPEG and stills, so every camera shows something; frozen streams reconnect on their own. Tap for the next camera, hold for a large view with sound. Streams stop when the tile is off screen. English, Dutch, German and French.",
     icon: "mdi:cctv",
