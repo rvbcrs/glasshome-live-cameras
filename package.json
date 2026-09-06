@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/rvbcrs/glasshome-cameras.git"
+    "url": "https://github.com/rvbcrs/glasshome-live-cameras.git"
   },
   "devDependencies": {
     "@glasshome/widget-cli": "^0.13.3",
