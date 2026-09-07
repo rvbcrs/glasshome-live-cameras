@@ -8,8 +8,14 @@ describe("routesFor", () => {
   test("hls cameras skip WebRTC", () => {
     expect(routesFor({ frontend_stream_type: "hls" })).toEqual(["hls", "mjpeg", "snapshot", "placeholder"]);
   });
-  test("cameras without a stream type go straight to MJPEG", () => {
+  test("the STREAM feature bit alone (HA without frontend_stream_type) walks the whole ladder", () => {
+    expect(routesFor({ supported_features: 2 })).toEqual(["webrtc", "hls", "mjpeg", "snapshot", "placeholder"]);
+    expect(routesFor({ supported_features: 3 })).toEqual(["webrtc", "hls", "mjpeg", "snapshot", "placeholder"]);
+  });
+  test("cameras without a stream go straight to MJPEG", () => {
     expect(routesFor({})).toEqual(["mjpeg", "snapshot", "placeholder"]);
+    expect(routesFor({ supported_features: 0 })).toEqual(["mjpeg", "snapshot", "placeholder"]);
+    expect(routesFor({ supported_features: 1 })).toEqual(["mjpeg", "snapshot", "placeholder"]);
     expect(routesFor(undefined)).toEqual(["mjpeg", "snapshot", "placeholder"]);
   });
 });

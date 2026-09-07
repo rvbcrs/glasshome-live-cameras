@@ -5,11 +5,20 @@ export type Layout = (typeof LAYOUTS)[number];
 export const FITS = ["Fill", "Fit", "Fill top", "Fill bottom"] as const;
 export type Fit = (typeof FITS)[number];
 
-/** The playback ladder for one camera, best route first. */
+/** CameraEntityFeature.STREAM */
+const STREAM = 2;
+
+/**
+ * The playback ladder for one camera, best route first. Older HA said which
+ * stream type the frontend should use in `frontend_stream_type`; since the
+ * `camera/capabilities` command replaced it (HA 2024.11) only the STREAM
+ * feature bit is left, so a stream camera tries WebRTC and falls to HLS.
+ */
 export function routesFor(attrs: Record<string, unknown> | undefined): Route[] {
   const type = attrs?.frontend_stream_type;
   if (type === "web_rtc") return ["webrtc", "hls", "mjpeg", "snapshot", "placeholder"];
   if (type === "hls") return ["hls", "mjpeg", "snapshot", "placeholder"];
+  if ((Number(attrs?.supported_features) || 0) & STREAM) return ["webrtc", "hls", "mjpeg", "snapshot", "placeholder"];
   return ["mjpeg", "snapshot", "placeholder"];
 }
 

@@ -54,6 +54,10 @@ const configSchema = defineConfig({
   motion: field.toggle({ title: t("cfgMotion"), description: t("cfgMotionDesc"), default: true }),
   hold: field.number({ title: t("cfgHold"), description: t("cfgHoldDesc"), min: 5, max: 300, default: 30 }),
   showName: field.toggle({ title: t("cfgShowName"), description: t("cfgShowNameDesc"), default: true }),
+  names: field.list(
+    field.group({ camera: field.entity("camera", { title: t("cfgNameCamera") }), name: field.text({ title: t("cfgNameText") }) }, { title: t("cfgName") }),
+    { title: t("cfgNames"), description: t("cfgNamesDesc"), max: 16, labelField: "name" },
+  ),
 });
 type Config = Infer<typeof configSchema>;
 
@@ -82,6 +86,8 @@ function CamerasWidget(props: { config: Config }) {
   const { showDialog, setShowDialog, openDialog, dialogProps } = useWidgetDialog();
 
   const cameras = () => props.config.cameras ?? [];
+  // A blank name means "use the one from Home Assistant".
+  const nameFor = (id: string) => props.config.names?.find((n) => (Array.isArray(n.camera) ? n.camera[0] : n.camera) === id)?.name?.trim() || undefined;
   const layout = (): Layout => props.config.layout ?? "Single";
   const holdMs = () => Math.max(5, props.config.hold ?? 30) * 1000;
   const [index, setIndex] = createSignal(0);
@@ -186,6 +192,7 @@ function CamerasWidget(props: { config: Config }) {
               {(id) => (
                 <Stack
                   entityId={id}
+                  name={nameFor(id)}
                   showName={props.config.showName ?? true}
                   fit={props.config.fit}
                   activity={activityFor(id)}
@@ -212,7 +219,7 @@ function CamerasWidget(props: { config: Config }) {
             <div class="flex flex-col gap-3">
               <div class="relative w-full overflow-hidden rounded-xl bg-black" style={{ "aspect-ratio": "16 / 9" }}>
                 {/* Only while open: controlsContent is built eagerly, and a hidden player would still stream. */}
-                <Stack entityId={current()} showName large fit="Fit" muted={muted()} activity={activityFor(current())} />
+                <Stack entityId={current()} name={nameFor(current())} showName large fit="Fit" muted={muted()} activity={activityFor(current())} />
               </div>
               <div class="flex items-center justify-between gap-2">
                 <Button variant="outline" size="sm" disabled={cameras().length < 2} onClick={() => advance(-1)}>
@@ -238,6 +245,8 @@ function CamerasWidget(props: { config: Config }) {
 
 interface StackProps {
   entityId: string;
+  /** Overrides the Home Assistant name. */
+  name?: string;
   showName: boolean;
   large?: boolean;
   fit?: Config["fit"];
@@ -289,10 +298,13 @@ function Stack(props: StackProps) {
   const entity = useEntity(() => top()?.id ?? "");
   const state = () => entity()?.state;
   const off = () => state() === "unavailable" || state() === "unknown";
-  const live = () => !off() && route() !== "placeholder" && route() !== "snapshot";
+  // The top player has not shown a frame yet; the slot below (if any) is still on screen.
+  const loading = () => !off() && !!top() && !top()!.ready();
+  const blank = () => loading() && slots().length === 1;
+  const live = () => !off() && !loading() && route() !== "placeholder" && route() !== "snapshot";
   const recording = () => live() && state() === "recording";
   const status = () =>
-    off() ? t("unavailable") : live() ? t("live") : route() === "snapshot" ? t("noStream") : state() === "idle" || state() === "streaming" || state() === "recording" ? t("noStream") : t("off");
+    off() ? t("unavailable") : loading() ? t("loading") : live() ? t("live") : route() === "snapshot" ? t("noStream") : state() === "idle" || state() === "streaming" || state() === "recording" ? t("noStream") : t("off");
   const age = () => (route() === "snapshot" && frameAt() ? t("ago", { s: Math.max(0, Math.round((now() - frameAt()) / 1000)) }) : null);
 
   // The dialog's large pane lives outside <Widget>, where the size hook throws.
@@ -320,10 +332,16 @@ function Stack(props: StackProps) {
         )}
       </For>
 
+      <Show when={blank()}>
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span class="h-7 w-7 animate-spin rounded-full border-2 border-white/20 border-t-white/80" />
+        </div>
+      </Show>
+
       <div class="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-2 bg-gradient-to-t from-black/65 via-black/25 to-transparent px-2.5 pb-2 pt-6 text-white">
         <Show when={props.showName && !tiny()}>
           <span class="min-w-0 truncate text-xs font-semibold drop-shadow" classList={{ "text-sm": props.large }}>
-            {entity()?.friendlyName ?? top()?.id}
+            {props.name ?? entity()?.friendlyName ?? top()?.id}
           </span>
         </Show>
         <span class="ml-auto flex shrink-0 items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider drop-shadow">
@@ -333,7 +351,10 @@ function Stack(props: StackProps) {
           <Show when={recording()}>
             <span class="text-red-400">{t("rec")}</span>
           </Show>
-          <span class="relative flex h-1.5 w-1.5">
+          <Show when={loading()}>
+            <span class="h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-white/30 border-t-white" />
+          </Show>
+          <span class="relative flex h-1.5 w-1.5" classList={{ hidden: loading() }}>
             <Show when={live()}>
               <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75" />
             </Show>
@@ -364,7 +385,7 @@ function Stack(props: StackProps) {
 }
 
 const DEMO = "camera.front_door_camera";
-const DEMO_CFG = { interval: 10, fit: "Fill", motion: true, hold: 30 } as const;
+const DEMO_CFG = { interval: 10, fit: "Fill", motion: true, hold: 30, names: [] as Config["names"] } as const;
 
 export default defineWidget<Config>({
   manifest: {
@@ -376,7 +397,7 @@ export default defineWidget<Config>({
     maxSize: { w: 6, h: 4 },
     defaultSize: { w: 3, h: 2 },
     sdkVersion: "^1.14.1",
-    configVersion: 2,
+    configVersion: 3,
     capabilities: [
       { domain: "camera", access: "read" },
       { domain: "binary_sensor", access: "read" },

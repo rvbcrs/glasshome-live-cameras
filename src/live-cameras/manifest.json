@@ -15,8 +15,8 @@
     "h": 2
   },
   "sdkVersion": "^1.14.1",
-  "configVersion": 2,
-  "version": "0.1.2",
+  "configVersion": 3,
+  "version": "0.1.6",
   "capabilities": [
     {
       "domain": "camera",
@@ -101,6 +101,42 @@
         "title": "Show name",
         "description": "Camera name over the picture.",
         "type": "boolean"
+      },
+      "names": {
+        "default": [],
+        "formType": "list",
+        "title": "Camera names",
+        "description": "Your own name for a camera instead of the one from Home Assistant.",
+        "labelField": "name",
+        "maxItems": 16,
+        "type": "array",
+        "items": {
+          "default": {
+            "camera": []
+          },
+          "title": "Camera",
+          "type": "object",
+          "properties": {
+            "camera": {
+              "default": [],
+              "domain": "camera",
+              "title": "Camera",
+              "singleSelect": true,
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "name": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "camera"
+          ],
+          "additionalProperties": false
+        }
       }
     },
     "required": [
@@ -110,7 +146,8 @@
       "fit",
       "motion",
       "hold",
-      "showName"
+      "showName",
+      "names"
     ],
     "additionalProperties": false
   },
@@ -121,7 +158,8 @@
     "fit": "Fill",
     "motion": true,
     "hold": 30,
-    "showName": true
+    "showName": true,
+    "names": []
   },
   "examples": [
     {
@@ -135,6 +173,7 @@
         "fit": "Fill",
         "motion": true,
         "hold": 30,
+        "names": [],
         "cameras": [
           "camera.front_door_camera"
         ],
@@ -153,6 +192,7 @@
         "fit": "Fill",
         "motion": true,
         "hold": 30,
+        "names": [],
         "cameras": [
           "camera.front_door_camera",
           "camera.front_door_camera"
@@ -172,6 +212,7 @@
         "fit": "Fill",
         "motion": true,
         "hold": 30,
+        "names": [],
         "cameras": [
           "camera.front_door_camera",
           "camera.front_door_camera",
@@ -193,6 +234,7 @@
         "fit": "Fill",
         "motion": true,
         "hold": 30,
+        "names": [],
         "cameras": [
           "camera.front_door_camera"
         ],

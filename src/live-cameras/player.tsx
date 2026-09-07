@@ -13,8 +13,12 @@ import Hls from "hls.js/light";
 import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
 import { type Fit, fitClass, mjpegPath, releaseAllBut, type Route, routesFor } from "./stream";
 
-/** A rung that shows no frame within this window is skipped. */
-const FIRST_FRAME_MS = 8000;
+/**
+ * A rung that shows no frame within this window is skipped. HA's go2rtc
+ * answers a WebRTC offer for an RTSP camera only once it pulls the stream,
+ * measured at 5 to 8 s against a Starling hub, so the window sits above that.
+ */
+const FIRST_FRAME_MS = 15_000;
 const SNAPSHOT_MS = 10_000;
 /** A video that stops advancing for this long is reconnected. */
 const STALL_MS = 12_000;
@@ -84,9 +88,25 @@ export function Player(props: PlayerProps) {
     video.muted = props.muted ?? true;
   });
 
-  // A boolean memo: the entity view is replaced on every HA update and must
+  // Boolean memos: the entity view is replaced on every HA update and must
   // not restart the stream each time.
   const loaded = createMemo(() => entity() !== undefined);
+  const available = createMemo(() => {
+    const e = entity();
+    return !!e && e.state !== "unavailable" && e.state !== "unknown";
+  });
+  // HA flags a camera unavailable while its stream worker is down and idle
+  // again once it recovers; the ladder starts over on every flip.
+  createEffect(
+    on(
+      available,
+      () => {
+        setRung(0);
+        setAttempt((n) => n + 1);
+      },
+      { defer: true },
+    ),
+  );
 
   createEffect(() => {
     const id = props.entityId;
