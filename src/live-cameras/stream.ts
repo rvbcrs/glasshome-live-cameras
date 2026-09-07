@@ -17,6 +17,16 @@ export function mjpegPath(id: string, token: string | undefined): string {
   return `/api/camera_proxy_stream/${id}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
 }
 
+/**
+ * Frees every blob url except `keep`, the frame on screen. That one stays in
+ * the list and is freed by the next frame that lands, so a reconnect never
+ * blanks the picture and never leaks more than one frame.
+ */
+export function releaseAllBut(urls: string[], keep: string, release: (u: string) => void): void {
+  for (const u of urls.splice(0)) if (u === keep) urls.push(u);
+  else release(u);
+}
+
 export function nextIndex(i: number, n: number, step = 1): number {
   if (n <= 0) return 0;
   return (((i + step) % n) + n) % n;

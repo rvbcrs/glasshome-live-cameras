@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { activitySensors, fitClass, isActivity, mjpegPath, nextIndex, routesFor, shownCameras } from "./stream";
+import { activitySensors, fitClass, isActivity, mjpegPath, nextIndex, releaseAllBut, routesFor, shownCameras } from "./stream";
 
 describe("routesFor", () => {
   test("web_rtc cameras try WebRTC first, then the rest of the ladder", () => {
@@ -93,5 +93,22 @@ describe("isActivity", () => {
     expect(isActivity("event.chime", "2026-09-05T20:00:00+00:00", undefined)).toBe(false);
     expect(isActivity("event.chime", "2026-09-05T20:00:00+00:00", "2026-09-05T20:00:00+00:00")).toBe(false);
     expect(isActivity("event.chime", "2026-09-05T20:01:00+00:00", "2026-09-05T20:00:00+00:00")).toBe(true);
+  });
+});
+
+describe("releaseAllBut", () => {
+  test("frees everything except the frame on screen, which stays listed", () => {
+    const urls = ["a", "b", "c"];
+    const freed: string[] = [];
+    releaseAllBut(urls, "b", (u) => freed.push(u));
+    expect(freed).toEqual(["a", "c"]);
+    expect(urls).toEqual(["b"]);
+  });
+  test("frees all when nothing is on screen", () => {
+    const urls = ["a", "b"];
+    const freed: string[] = [];
+    releaseAllBut(urls, "", (u) => freed.push(u));
+    expect(freed).toEqual(["a", "b"]);
+    expect(urls).toEqual([]);
   });
 });

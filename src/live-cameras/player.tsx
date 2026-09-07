@@ -11,7 +11,7 @@ import {
 import { Icon } from "@iconify-icon/solid";
 import Hls from "hls.js/light";
 import { createEffect, createMemo, createSignal, on, onCleanup, untrack } from "solid-js";
-import { type Fit, fitClass, mjpegPath, type Route, routesFor } from "./stream";
+import { type Fit, fitClass, mjpegPath, releaseAllBut, type Route, routesFor } from "./stream";
 
 /** A rung that shows no frame within this window is skipped. */
 const FIRST_FRAME_MS = 8000;
@@ -49,11 +49,17 @@ export function Player(props: PlayerProps) {
   const [rung, setRung] = createSignal(0);
   const [attempt, setAttempt] = createSignal(0);
   const [route, setRoute] = createSignal<Route>("placeholder");
-  // The picture elements stay hidden until a frame really landed, so a failed
-  // load never shows the browser's broken-image icon.
-  const [frameOk, setFrameOk] = createSignal(false);
+  // Each picture element stays hidden until a frame really landed on it, and
+  // keeps that frame across reconnects and rung changes: a stream that dies
+  // (the host's media proxy cuts MJPEG after ~10 s of silence) must neither
+  // blank the tile nor show Safari's broken-image icon.
+  const [videoOk, setVideoOk] = createSignal(false);
+  const [imgOk, setImgOk] = createSignal(false);
   let video!: HTMLVideoElement;
   let img!: HTMLImageElement;
+  // MJPEG frames on this element, oldest first; the last one stays on screen between streams.
+  const blobs: string[] = [];
+  onCleanup(() => releaseAllBut(blobs, "", URL.revokeObjectURL));
 
   const ladder = (): Route[] => {
     const e = entity();
@@ -63,7 +69,17 @@ export function Player(props: PlayerProps) {
     return routesFor(e.attributes);
   };
 
-  createEffect(on(() => props.entityId, () => setRung(0), { defer: true }));
+  createEffect(
+    on(
+      () => props.entityId,
+      () => {
+        setRung(0);
+        setVideoOk(false);
+        setImgOk(false);
+      },
+      { defer: true },
+    ),
+  );
   createEffect(() => {
     video.muted = props.muted ?? true;
   });
@@ -81,7 +97,6 @@ export function Player(props: PlayerProps) {
     const routes = untrack(ladder);
     const current = routes[Math.min(r, routes.length - 1)]!;
     setRoute(current);
-    setFrameOk(false);
     // Callbacks run untracked: the parent reads its own signals in them, and
     // those must not become dependencies of this effect.
     untrack(() => props.onRoute?.(current));
@@ -119,7 +134,7 @@ export function Player(props: PlayerProps) {
         if (!alive) return;
         const first = !hadFrame;
         hadFrame = true;
-        setFrameOk(true);
+        (current === "webrtc" || current === "hls" ? setVideoOk : setImgOk)(true);
         untrack(() => {
           if (first) props.onReady?.();
           if (current === "mjpeg" || current === "snapshot") props.onFrame?.(Date.now());
@@ -140,7 +155,7 @@ export function Player(props: PlayerProps) {
         : current === "hls"
           ? startHls(id, video, signals)
           : current === "mjpeg"
-            ? startMjpeg(id, token, img, signals)
+            ? startMjpeg(id, token, img, blobs, signals)
             : Promise.resolve(startSnapshot(picture, img, signals));
     start.then((s) => (alive ? (stop = s) : s()), fail);
 
@@ -165,8 +180,8 @@ export function Player(props: PlayerProps) {
 
   return (
     <div class="relative h-full w-full overflow-hidden bg-black">
-      <video ref={video} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesVideo() || !frameOk() }} autoplay playsinline />
-      <img ref={img} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesImg() || !frameOk() }} alt="" draggable={false} />
+      <video ref={video} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesVideo() || !videoOk() }} autoplay playsinline />
+      <img ref={img} class={`absolute inset-0 h-full w-full ${fit()}`} classList={{ hidden: !usesImg() || !imgOk() }} alt="" draggable={false} />
       <div
         class="absolute inset-0 flex items-center justify-center text-white/40"
         classList={{ hidden: route() !== "placeholder" }}
@@ -218,9 +233,10 @@ async function startWebrtc(id: string, video: HTMLVideoElement, s: Signals): Pro
   for (const c of remoteQueue) void pc.addIceCandidate(c).catch(() => {});
   if (sessionId) for (const c of localQueue) void sendWebRtcCandidate(id, sessionId, c as Record<string, unknown>).catch(() => {});
 
+  // The ended stream stays attached: the element keeps its last frame until
+  // the next route replaces it.
   return () => {
     pc.close();
-    video.srcObject = null;
     void session.unsubscribe?.();
   };
 }
@@ -240,6 +256,8 @@ async function startHls(id: string, video: HTMLVideoElement, s: Signals): Promis
   const data = await getStream(id, { format: "hls" });
   const url = data.stream.url;
   if (!url) throw new Error("no HLS url");
+  // A stream object left by WebRTC would win over `src`.
+  video.srcObject = null;
   video.addEventListener("loadeddata", s.onFrame, { once: true });
   video.addEventListener("error", s.onFail, { once: true });
 
@@ -288,20 +306,19 @@ function indexOf(buf: Uint8Array, pat: number[], from = 0): number {
  * only when the picture changes, so a still camera would sit on a black tile.
  * Every complete JPEG is shown the moment its end marker is in.
  */
-async function startMjpeg(id: string, token: string | undefined, img: HTMLImageElement, s: Signals): Promise<Stop> {
+async function startMjpeg(id: string, token: string | undefined, img: HTMLImageElement, blobs: string[], s: Signals): Promise<Stop> {
   const url = hassMediaUrl(mjpegPath(id, token));
   if (!url) throw new Error("no MJPEG url");
   const ctrl = new AbortController();
   const res = await fetch(url, { credentials: "include", signal: ctrl.signal });
   if (!res.ok || !res.body) throw new Error(`MJPEG ${res.status}`);
   const reader = res.body.getReader();
-  const urls: string[] = [];
   const show = (jpeg: Uint8Array) => {
     const u = URL.createObjectURL(new Blob([jpeg as BlobPart], { type: "image/jpeg" }));
-    urls.push(u);
+    blobs.push(u);
     img.onload = () => {
-      // Everything older than what is on screen can go.
-      while (urls.length > 1 && urls[0] !== u) URL.revokeObjectURL(urls.shift()!);
+      // Everything older than what is on screen can go, including the frame a previous stream left.
+      while (blobs.length > 1 && blobs[0] !== u) URL.revokeObjectURL(blobs.shift()!);
       s.onFrame();
     };
     img.src = u;
@@ -342,8 +359,7 @@ async function startMjpeg(id: string, token: string | undefined, img: HTMLImageE
     ctrl.abort();
     void reader.cancel().catch(() => {});
     img.onload = null;
-    img.removeAttribute("src");
-    for (const u of urls) URL.revokeObjectURL(u);
+    releaseAllBut(blobs, img.src, URL.revokeObjectURL);
   };
 }
 
@@ -371,6 +387,5 @@ function startSnapshot(picture: string | undefined, img: HTMLImageElement, s: Si
   return () => {
     alive = false;
     clearInterval(timer);
-    img.removeAttribute("src");
   };
 }
