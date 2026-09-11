@@ -49,7 +49,7 @@ const configSchema = defineConfig({
   title: field.title(),
   cameras: field.entities("camera", { title: t("cfgCameras"), description: t("cfgCamerasDesc") }),
   layout: field.choice(LAYOUTS, { title: t("cfgLayout"), description: t("cfgLayoutDesc"), default: "Single" }),
-  interval: field.number({ title: t("cfgInterval"), description: t("cfgIntervalDesc"), min: 3, max: 120, default: 10 }),
+  interval: field.number({ title: t("cfgInterval"), description: t("cfgIntervalDesc"), min: 3, max: 3600, default: 10 }),
   fit: field.choice(FITS, { title: t("cfgFit"), description: t("cfgFitDesc"), default: "Fill" }),
   motion: field.toggle({ title: t("cfgMotion"), description: t("cfgMotionDesc"), default: true }),
   hold: field.number({ title: t("cfgHold"), description: t("cfgHoldDesc"), min: 5, max: 300, default: 30 }),
